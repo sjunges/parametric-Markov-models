@@ -1,0 +1,3 @@
+R{"steps"}min=? [ F "finished" ]
+Pmin=? [ F "finished"&"all_coins_equal_1" ]
+Pmax=? [ F "finished"&!"agree" ]
