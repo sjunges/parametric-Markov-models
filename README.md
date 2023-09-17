@@ -1,5 +1,8 @@
 Parametric Markov Model Benchmark Suite
 =======================================
+
+[![DOI](https://zenodo.org/badge/689586831.svg)](https://zenodo.org/badge/latestdoi/689586831)
+
 This suite contains a set of benchmarks and a simple runner script that can be used to run these benchmarks. 
 
 Benchmarks
