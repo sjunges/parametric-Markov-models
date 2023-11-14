@@ -6,7 +6,7 @@ import subprocess
 
 logger = logging.getLogger(__file__)
 FORMAT = '%(asctime)s %(message)s'
-logging.basicConfig(format=FORMAT, stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(format=FORMAT, stream=sys.stdout, level=logging.INFO)
 
 
 class Benchmark:
@@ -26,6 +26,9 @@ class Benchmark:
           return os.path.join(self.benchmark_path, self.property_name)
         return self.property_name
 
+    def __str__(self):
+        return f"<Benchmark:{self.benchmark_path}/{self.model_name}&{self.property_name},{self.constants}>"
+
 
 class FeasibilityQuery:
     def __init__(self, direction : str|None = None, threshold : float|None = None, graph_epsilon = 0.0, guarantee_precision = None):
@@ -34,10 +37,16 @@ class FeasibilityQuery:
         self.graph_epsilon = graph_epsilon
         self.guarantee_precision = guarantee_precision
 
+    def __str__(self):
+        return f"<FeasibilityQuery:dir={self.direction},threshold={self.threshold},eps={self.graph_epsilon},guarantee={self.guarantee_precision}>"
+
 
 class VerificationQuery:
     def __init__(self, graph_epsilon = 0.05):
         self.graph_epsilon = graph_epsilon
+
+    def __str__(self):
+        return f"<VerificationQuery:eps={self.graph_epsilon}>"
 
 
 class SolutionFunctionQuery:
@@ -46,10 +55,11 @@ class SolutionFunctionQuery:
 
 
 class StormConfig:
-    def __init__(self, path : str, arguments : list[str] = [], feasibility_method = None):
+    def __init__(self, path : str, arguments : list[str] = [], feasibility_method = None, config_name="storm"):
         self.path = path
         self.arguments = arguments
         self.feasibility_method = feasibility_method
+        self._config_name = config_name
 
     def specify_model(self, path : str) -> list[str]:
         if path.endswith(".jani"):
@@ -89,6 +99,9 @@ class StormConfig:
             return []
         return ["-const", ",".join([f"{k}={v}" for k,v in constants.items()])]
 
+    def __str__(self):
+        return f"<Config:{self._config_name}>"
+
 
 def create_benchmarks_with_varying_constants(path, modelfile, propertyfile, constants, query) -> list[tuple[Benchmark,FeasibilityQuery]]:
     return [(Benchmark(path, modelfile, propertyfile, c), query) for c in constants]
@@ -107,10 +120,19 @@ def run_benchmark(benchmark, query, tool_config):
     tool_call = subprocess.Popen(invocation, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     output, errors = tool_call.communicate()
     tool_call.wait()
+    error = False
     if (len(errors)) > 0:
+        error = True
         logger.error(errors)
+    if tool_call.returncode > 0:
+        error = True
     logger.debug(output)
-    logger.info("Done!")
+    if error:
+        logger.warning("Produced an error!")
+        return False
+    else:
+        logger.info("Done sucesfully!")
+        return True
 
 
 def create_solution_function_benchmarks() -> list[tuple[Benchmark, SolutionFunctionQuery]]:
@@ -158,18 +180,29 @@ def main():
         description='Analyzes parametric Markov model through a model checker')
     parser.add_argument("path_to_storm")
     args = parser.parse_args()
+    collected_errors = []
 
-    storm_config = StormConfig(args.path_to_storm, feasibility_method="gd")
+    storm_config = StormConfig(args.path_to_storm, feasibility_method="gd", config_name="StormGD")
+    i = 1
     for entry in create_solution_function_benchmarks() + create_test_pmc_feas_gd_benchmarks():
+        print(i)
         benchmark, query = entry[0], entry[1]
-        run_benchmark(benchmark, query, storm_config)
+        success = run_benchmark(benchmark, query, storm_config)
+        if not success:
+            collected_errors.append((i,benchmark,query,storm_config))
         print("******")
-    storm_config = StormConfig(args.path_to_storm, feasibility_method="pla")
+        i+=1
+    storm_config = StormConfig(args.path_to_storm, feasibility_method="pla", config_name="StormPLA")
     for entry in TEST_PMDP_FEAS_BENCHMARKS + TEST_PMDP_VERIF_BENCHMARKS:
+        print(i)
         benchmark, query = entry[0], entry[1]
-        run_benchmark(benchmark, query, storm_config)
+        success = run_benchmark(benchmark, query, storm_config)
+        if not success:
+            collected_errors.append((i,benchmark,query,storm_config))
         print("******")
-
+        i += 1
+    for ce in collected_errors:
+        print("" + str(ce[0]) + ":" + str(ce[1]) + "," + str(ce[2]) + "," + str(ce[3]))
 
 if __name__ == "__main__":
     main()
